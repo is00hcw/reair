@@ -3,6 +3,7 @@ package com.airbnb.reair.common;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FsShell;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.tools.DistCp;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * This is a wrapper around DistCp that adds a few options and makes it easier to use.
@@ -98,11 +100,20 @@ public class DistCpWrapper {
     LOG.debug(String.format("Copying %s to %s", srcDir, distcpDestDir));
 
 
-    long srcSize = FsUtils.getSize(conf, srcDir, Optional.empty());
-    LOG.debug("Source size is: " + srcSize);
+    Set<FileStatus> fileStatuses =
+        FsUtils.getFileStatusesRecursive(conf, srcDir, Optional.empty());
+
+    long srcSize = 0;
+    for (FileStatus status : fileStatuses) {
+      srcSize += status.getLen();
+    }
+    LOG.debug(String.format(
+        "%s has %s files with a total size of %s bytes",
+        srcDir, fileStatuses.size(), srcSize));
 
     // Use shell to copy for small files
-    if (srcSize < options.getLocalCopyThreshold()) {
+    if (srcSize < options.getLocalCopySizeThreshold()
+        && fileStatuses.size() < options.getLocalCopyCountThreshold()) {
       String[] mkdirArgs = {"-mkdir", "-p", distcpDestDir.getParent().toString()};
       String[] copyArgs = {"-cp", srcDir.toString(), distcpDestDir.toString()};
 
